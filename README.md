@@ -4,10 +4,13 @@ Dead-simple disk cleanup for developers. Scans a directory tree, lists build
 artifacts and git worktrees, and deletes them after confirmation.
 
 ```
-disk-cleanup [-n] [-y] [PATH]
+disk-cleanup [-n] [-y] [--global | PATH]
 ```
 
 - `PATH` – directory to scan (default: current directory)
+- `--global` – scan your whole home directory and the usual tool caches instead of `PATH`. On macOS it skips
+  `Library`, `Desktop`, `Documents`, `Downloads`, `Movies`, `Music`, `Pictures`,
+  `Public`, `Applications` and `.Trash`, so no permission prompts appear
 - `-n`, `--dry-run` – list only, never delete
 - `-y`, `--yes` – don't ask for confirmation (scripts/cron)
 
@@ -20,6 +23,7 @@ disk-cleanup [-n] [-y] [PATH]
 | node_modules | `node_modules` next to `package.json` |
 | python-venv | `.venv`/`venv` containing `pyvenv.cfg` |
 | python-cache | `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox` |
+| global-cache | with `--global`: uv, pip, cargo registry/git, npm, yarn, pnpm, gradle, maven, Go build, Homebrew and Xcode DerivedData caches (re-downloaded on demand) |
 | git-worktree | linked worktrees; removed with `git worktree remove` (dirty ones are skipped) |
 
 ## Install

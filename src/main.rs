@@ -10,6 +10,7 @@ enum Kind {
     NodeModules,
     PythonVenv,
     PythonCache,
+    GlobalCache,
     JavaBuild,
     Worktree,
 }
@@ -21,6 +22,7 @@ impl Kind {
             Kind::NodeModules => "node_modules",
             Kind::PythonVenv => "python-venv",
             Kind::PythonCache => "python-cache",
+            Kind::GlobalCache => "global-cache",
             Kind::JavaBuild => "java-build",
             Kind::Worktree => "git-worktree",
         }
@@ -35,12 +37,15 @@ struct Item {
     gitdir: Option<PathBuf>,
 }
 
-const HELP: &str = "disk-cleanup [-n] [-y] [PATH]
+const HELP: &str = "disk-cleanup [-n] [-y] [--global | PATH]
 
 Finds Rust/Java build dirs, node_modules, Python venvs and caches, git worktrees under
 PATH (default: current dir), lists them, and asks before deleting.
 Worktrees with uncommitted changes are skipped.
 
+  --global        scan your whole home directory plus tool caches (uv, cargo,
+                  npm, pip, Homebrew, Xcode...). On macOS skips Library, Desktop,
+                  Documents, Downloads, etc. so no permission prompts appear
   -n, --dry-run   list only, never delete
   -y, --yes       don't ask for confirmation (for scripts/cron)
 ";
@@ -95,7 +100,27 @@ fn linked_gitdir(dot_git: &Path) -> Option<PathBuf> {
     Some(p.parent()?.parent()?.to_path_buf())
 }
 
-fn scan(dir: &Path, out: &mut Vec<Item>) {
+/// Package-manager and tool caches under $HOME (checked with --global). All are re-downloaded on demand.
+const GLOBAL_CACHES: &[&str] = &[
+    ".cache/uv",
+    ".cache/pip",
+    ".cache/pre-commit",
+    ".cache/go-build",
+    ".cargo/registry",
+    ".cargo/git",
+    ".npm/_cacache",
+    ".yarn/cache",
+    ".pnpm-store",
+    ".gradle/caches",
+    ".m2/repository",
+    "Library/Caches/pip",
+    "Library/Caches/Homebrew",
+    "Library/Caches/Yarn",
+    "Library/pnpm/store",
+    "Library/Developer/Xcode/DerivedData",
+];
+
+fn scan(dir: &Path, skip: &[PathBuf], out: &mut Vec<Item>) {
     let Ok(rd) = fs::read_dir(dir) else { return };
     let entries: Vec<_> = rd.flatten().collect();
     let has = |n: &str| entries.iter().any(|e| e.file_name() == n);
@@ -132,7 +157,8 @@ fn scan(dir: &Path, out: &mut Vec<Item>) {
             }
             // Skip huge noisy dirs that never contain projects we care about.
             None if matches!(&*name, "Library" | ".Trash" | ".cargo" | ".rustup" | "node_modules" | "target") => {}
-            None => scan(&path, out),
+            None if skip.contains(&path) => {}
+            None => scan(&path, skip, out),
         }
     }
 }
@@ -149,10 +175,12 @@ fn main() {
     let mut dry = false;
     let mut yes = false;
     let mut root = None;
+    let mut home = false;
     for a in std::env::args().skip(1) {
         match a.as_str() {
             "-n" | "--dry-run" => dry = true,
             "-y" | "--yes" => yes = true,
+            "--global" | "--home" => home = true,
             "-h" | "--help" => {
                 print!("{HELP}");
                 return;
@@ -164,6 +192,29 @@ fn main() {
             p => root = Some(PathBuf::from(p)),
         }
     }
+    let mut skip: Vec<PathBuf> = vec![];
+    let mut global: Vec<PathBuf> = vec![];
+    if home {
+        let Some(h) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+            eprintln!("cannot determine home directory");
+            std::process::exit(2);
+        };
+        let h = PathBuf::from(h);
+        if cfg!(target_os = "macos") {
+            // Folders protected by macOS privacy (TCC) that trigger permission dialogs.
+            for d in ["Library", "Desktop", "Documents", "Downloads", "Movies", "Music", "Pictures", "Public", "Applications", ".Trash"] {
+                skip.push(h.join(d));
+            }
+        }
+        for c in GLOBAL_CACHES {
+            let p = h.join(c);
+            if p.is_dir() {
+                global.push(p.clone());
+                skip.push(p);
+            }
+        }
+        root = Some(h);
+    }
     let root = root.unwrap_or_else(|| PathBuf::from("."));
     if !root.is_dir() {
         eprintln!("{} is not a directory", root.display());
@@ -172,7 +223,11 @@ fn main() {
 
     eprintln!("scanning {} ...", root.display());
     let mut items = vec![];
-    scan(&root, &mut items);
+    scan(&root, &skip, &mut items);
+    for p in global {
+        let (size, newest) = dir_stats(&p);
+        items.push(Item { kind: Kind::GlobalCache, path: p, size, age_days: age_days(newest), gitdir: None });
+    }
     // A worktree's size includes artifacts inside it, which are listed separately;
     // subtract them so nothing is counted twice.
     let nested: Vec<(usize, u64)> = items
