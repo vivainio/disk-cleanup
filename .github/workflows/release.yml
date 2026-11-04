@@ -10,22 +10,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  name: linux-x86_64 }
-          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, name: linux-aarch64 }
-          - { os: macos-latest,   target: aarch64-apple-darwin,      name: macos-aarch64 }
-          - { os: windows-latest, target: x86_64-pc-windows-msvc,    name: windows-x86_64 }
+          - { os: ubuntu-latest,    target: x86_64-unknown-linux-gnu,  bin: disk-cleanup,     asset: disk-cleanup-linux-x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, bin: disk-cleanup,     asset: disk-cleanup-linux-aarch64 }
+          - { os: macos-latest,     target: aarch64-apple-darwin,      bin: disk-cleanup,     asset: disk-cleanup-macos-aarch64 }
+          - { os: windows-latest,   target: x86_64-pc-windows-msvc,    bin: disk-cleanup.exe, asset: disk-cleanup.exe }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - run: rustup target add ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
-      - name: Stage binary (unix)
-        if: runner.os != 'Windows'
-        run: cp target/${{ matrix.target }}/release/disk-cleanup disk-cleanup-${{ matrix.name }}
-      - name: Stage binary (windows)
-        if: runner.os == 'Windows'
+      - name: Stage binary
         shell: bash
-        run: cp target/${{ matrix.target }}/release/disk-cleanup.exe disk-cleanup-${{ matrix.name }}.exe
+        run: cp target/${{ matrix.target }}/release/${{ matrix.bin }} ${{ matrix.asset }}
       - uses: softprops/action-gh-release@v2
         with:
-          files: disk-cleanup-${{ matrix.name }}*
+          files: ${{ matrix.asset }}
