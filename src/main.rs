@@ -183,6 +183,20 @@ fn main() {
     eprintln!("scanning {} ...", root.display());
     let mut items = vec![];
     scan(&root, &mut items);
+    // A worktree's size includes artifacts inside it, which are listed separately;
+    // subtract them so nothing is counted twice.
+    let nested: Vec<(usize, u64)> = items
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| w.kind == Kind::Worktree)
+        .map(|(wi, w)| {
+            let inner = items.iter().filter(|i| i.kind != Kind::GitRepo && i.path != w.path && i.path.starts_with(&w.path)).map(|i| i.size).sum();
+            (wi, inner)
+        })
+        .collect();
+    for (wi, inner) in nested {
+        items[wi].size = items[wi].size.saturating_sub(inner);
+    }
     items.sort_by(|a, b| b.size.cmp(&a.size));
     if items.is_empty() {
         println!("nothing found");
@@ -190,8 +204,10 @@ fn main() {
     }
 
     println!("{:<13} {:>10} {:>6}  PATH", "KIND", "SIZE", "AGE");
+    println!("(git-repo rows are info only and are never deleted)");
     for i in &items {
-        println!("{:<13} {:>10} {:>5}d  {}", i.kind.label(), human(i.size), i.age_days, i.path.display());
+        let note = if i.kind == Kind::GitRepo { "  [kept]" } else { "" };
+        println!("{:<13} {:>10} {:>5}d  {}{note}", i.kind.label(), human(i.size), i.age_days, i.path.display());
     }
     let cleanable = |i: &&Item| i.kind != Kind::GitRepo;
     let total: u64 = items.iter().filter(cleanable).map(|i| i.size).sum();
@@ -200,11 +216,13 @@ fn main() {
         println!("\nnothing to delete");
         return;
     }
-    println!("\n{count} deletable items, up to {}", human(total));
+    println!("\n{count} items can be removed, freeing up to {}.", human(total));
+    println!("These are build outputs and caches that get recreated by your tools.");
+    println!("Source code and git history are not touched; worktrees with uncommitted changes are skipped.");
     if dry {
         return;
     }
-    if !yes && !confirm("Delete them?") {
+    if !yes && !confirm("Remove the items above (not [kept] ones)?") {
         println!("aborted");
         return;
     }
