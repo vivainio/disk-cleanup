@@ -11,7 +11,6 @@ enum Kind {
     PythonVenv,
     PythonCache,
     JavaBuild,
-    GitRepo,
     Worktree,
 }
 
@@ -23,7 +22,6 @@ impl Kind {
             Kind::PythonVenv => "python-venv",
             Kind::PythonCache => "python-cache",
             Kind::JavaBuild => "java-build",
-            Kind::GitRepo => "git-repo",
             Kind::Worktree => "git-worktree",
         }
     }
@@ -41,7 +39,6 @@ const HELP: &str = "disk-cleanup [-n] [-y] [PATH]
 
 Finds Rust/Java build dirs, node_modules, Python venvs and caches, git worktrees under
 PATH (default: current dir), lists them, and asks before deleting.
-Git repos are listed for information only and never deleted.
 Worktrees with uncommitted changes are skipped.
 
   -n, --dry-run   list only, never delete
@@ -103,17 +100,10 @@ fn scan(dir: &Path, out: &mut Vec<Item>) {
     let entries: Vec<_> = rd.flatten().collect();
     let has = |n: &str| entries.iter().any(|e| e.file_name() == n);
     let gradle = ["build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts"].iter().any(|n| has(n));
-    let is_repo = has(".git");
 
-    {
-        if let Some(gitdir) = linked_gitdir(&dir.join(".git")) {
-            let (size, newest) = dir_stats(dir);
-            out.push(Item { kind: Kind::Worktree, path: dir.to_path_buf(), size, age_days: age_days(newest), gitdir: Some(gitdir) });
-        }
-    }
-    if is_repo && dir.join(".git").is_dir() {
-        let (size, newest) = dir_stats(&dir.join(".git"));
-        out.push(Item { kind: Kind::GitRepo, path: dir.to_path_buf(), size, age_days: age_days(newest), gitdir: None });
+    if let Some(gitdir) = linked_gitdir(&dir.join(".git")) {
+        let (size, newest) = dir_stats(dir);
+        out.push(Item { kind: Kind::Worktree, path: dir.to_path_buf(), size, age_days: age_days(newest), gitdir: Some(gitdir) });
     }
 
     for e in &entries {
@@ -190,7 +180,7 @@ fn main() {
         .enumerate()
         .filter(|(_, w)| w.kind == Kind::Worktree)
         .map(|(wi, w)| {
-            let inner = items.iter().filter(|i| i.kind != Kind::GitRepo && i.path != w.path && i.path.starts_with(&w.path)).map(|i| i.size).sum();
+            let inner = items.iter().filter(|i| i.path != w.path && i.path.starts_with(&w.path)).map(|i| i.size).sum();
             (wi, inner)
         })
         .collect();
@@ -204,32 +194,25 @@ fn main() {
     }
 
     println!("{:<13} {:>10} {:>6}  PATH", "KIND", "SIZE", "AGE");
-    println!("(git-repo rows are info only and are never deleted)");
     for i in &items {
-        let note = if i.kind == Kind::GitRepo { "  [kept]" } else { "" };
-        println!("{:<13} {:>10} {:>5}d  {}{note}", i.kind.label(), human(i.size), i.age_days, i.path.display());
+        println!("{:<13} {:>10} {:>5}d  {}", i.kind.label(), human(i.size), i.age_days, i.path.display());
     }
-    let cleanable = |i: &&Item| i.kind != Kind::GitRepo;
-    let total: u64 = items.iter().filter(cleanable).map(|i| i.size).sum();
-    let count = items.iter().filter(cleanable).count();
-    if count == 0 {
-        println!("\nnothing to delete");
-        return;
-    }
+    let total: u64 = items.iter().map(|i| i.size).sum();
+    let count = items.len();
     println!("\n{count} items can be removed, freeing up to {}.", human(total));
     println!("These are build outputs and caches that get recreated by your tools.");
     println!("Source code and git history are not touched; worktrees with uncommitted changes are skipped.");
     if dry {
         return;
     }
-    if !yes && !confirm("Remove the items above (not [kept] ones)?") {
+    if !yes && !confirm("Remove the items above?") {
         println!("aborted");
         return;
     }
 
     let mut freed = 0;
     // Plain artifacts first (they may live inside worktrees), then worktrees.
-    for i in items.iter().filter(|i| !matches!(i.kind, Kind::GitRepo | Kind::Worktree)) {
+    for i in items.iter().filter(|i| i.kind != Kind::Worktree) {
         match fs::remove_dir_all(&i.path) {
             Ok(()) => {
                 freed += i.size;

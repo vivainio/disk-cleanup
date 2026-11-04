@@ -21,7 +21,6 @@ disk-cleanup [-n] [-y] [PATH]
 | python-venv | `.venv`/`venv` containing `pyvenv.cfg` |
 | python-cache | `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox` |
 | git-worktree | linked worktrees; removed with `git worktree remove` (dirty ones are skipped) |
-| git-repo | listed for information only, never deleted |
 
 ## Install
 
