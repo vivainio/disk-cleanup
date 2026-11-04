@@ -1,0 +1,33 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu,  name: linux-x86_64 }
+          - { os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, name: linux-aarch64 }
+          - { os: macos-latest,   target: aarch64-apple-darwin,      name: macos-aarch64 }
+          - { os: macos-13,       target: x86_64-apple-darwin,       name: macos-x86_64 }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,    name: windows-x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: rustup target add ${{ matrix.target }}
+      - run: cargo build --release --target ${{ matrix.target }}
+      - name: Package (unix)
+        if: runner.os != 'Windows'
+        run: |
+          tar -C target/${{ matrix.target }}/release -czf disk-cleanup-${{ matrix.name }}.tar.gz disk-cleanup
+      - name: Package (windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive target/${{ matrix.target }}/release/disk-cleanup.exe disk-cleanup-${{ matrix.name }}.zip
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: disk-cleanup-${{ matrix.name }}.*

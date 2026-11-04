@@ -1,0 +1,13 @@
+[package]
+name = "disk-cleanup"
+version = "0.1.0"
+edition = "2024"
+
+description = "Find and delete build artifacts (Rust, Java, Python, node_modules) and git worktrees"
+license = "MIT"
+
+[dependencies]
+
+[profile.release]
+strip = true
+lto = true
