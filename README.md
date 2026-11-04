@@ -29,9 +29,11 @@ Download the single binary for your platform straight into `~/.local/bin`
 
 ```sh
 mkdir -p ~/.local/bin
-os=$(uname -s | tr A-Z a-z); [ "$os" = darwin ] && os=macos
-arch=$(uname -m); [ "$arch" = arm64 ] && arch=aarch64
-curl -fsSL "https://github.com/vivainio/disk-cleanup/releases/latest/download/disk-cleanup-$os-$arch" -o ~/.local/bin/disk-cleanup
+case "$(uname -s)" in
+  Darwin) asset=disk-cleanup-macos ;;
+  *)      asset=disk-cleanup-linux-$(uname -m | sed 's/arm64/aarch64/') ;;
+esac
+curl -fsSL "https://github.com/vivainio/disk-cleanup/releases/latest/download/$asset" -o ~/.local/bin/disk-cleanup
 chmod +x ~/.local/bin/disk-cleanup
 ```
 
@@ -41,7 +43,7 @@ Release assets (a release can't hold several files with the same name, so each
 carries its platform suffix; the `-o` above saves it as plain `disk-cleanup`):
 
 - `disk-cleanup-linux-x86_64`, `disk-cleanup-linux-aarch64`
-- `disk-cleanup-macos-aarch64` (Apple Silicon only)
+- `disk-cleanup-macos` (Apple Silicon)
 - `disk-cleanup.exe` (Windows x86_64)
 
 Or build from source: `cargo install --git https://github.com/vivainio/disk-cleanup`
