@@ -41,7 +41,7 @@ Release assets (a release can't hold several files with the same name, so each
 carries its platform suffix; the `-o` above saves it as plain `disk-cleanup`):
 
 - `disk-cleanup-linux-x86_64`, `disk-cleanup-linux-aarch64`
-- `disk-cleanup-macos-aarch64`, `disk-cleanup-macos-x86_64`
+- `disk-cleanup-macos-aarch64` (Apple Silicon only)
 - `disk-cleanup-windows-x86_64.exe`
 
 Or build from source: `cargo install --git https://github.com/vivainio/disk-cleanup`
