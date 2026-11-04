@@ -20,14 +20,13 @@ jobs:
       - uses: actions/checkout@v4
       - run: rustup target add ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
-      - name: Package (unix)
+      - name: Stage binary (unix)
         if: runner.os != 'Windows'
-        run: |
-          tar -C target/${{ matrix.target }}/release -czf disk-cleanup-${{ matrix.name }}.tar.gz disk-cleanup
-      - name: Package (windows)
+        run: cp target/${{ matrix.target }}/release/disk-cleanup disk-cleanup-${{ matrix.name }}
+      - name: Stage binary (windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: Compress-Archive target/${{ matrix.target }}/release/disk-cleanup.exe disk-cleanup-${{ matrix.name }}.zip
+        shell: bash
+        run: cp target/${{ matrix.target }}/release/disk-cleanup.exe disk-cleanup-${{ matrix.name }}.exe
       - uses: softprops/action-gh-release@v2
         with:
-          files: disk-cleanup-${{ matrix.name }}.*
+          files: disk-cleanup-${{ matrix.name }}*
